@@ -1,0 +1,19 @@
+[project]
+name = "hamming-takehome"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "aiohttp>=3.10.10",
+    "asyncio>=3.4.3",
+    "fastapi>=0.115.2",
+    "loguru>=0.7.2",
+    "openai>=1.52.0",
+    "pydantic>=2.9.2",
+    "pydub>=0.25.1",
+    "python-dotenv>=1.0.1",
+    "requests>=2.32.3",
+    "transitions>=0.9.2",
+    "uvicorn>=0.32.0",
+]
