@@ -15,6 +15,8 @@ class Config(BaseModel):
     CONCURRENT_CALLS: int = Field(default=1)
     MAX_DEPTH: int = Field(default=10)
     TIMEOUT_SECONDS: int = Field(default=300)
+    RETRY_DELAY_SECONDS: int = Field(default=10)
+    MAX_RETRIES: int = Field(default=3)
 
     @classmethod
     def load_from_env(cls):
@@ -29,4 +31,6 @@ class Config(BaseModel):
             CONCURRENT_CALLS=int(os.getenv("CONCURRENT_CALLS")),  # type: ignore
             MAX_DEPTH=int(os.getenv("MAX_DEPTH")),  # type: ignore
             TIMEOUT_SECONDS=int(os.getenv("TIMEOUT_SECONDS")),  # type: ignore
+            RETRY_DELAY_SECONDS=int(os.getenv("RETRY_DELAY_SECONDS")),  # type: ignore
+            MAX_RETRIES=int(os.getenv("MAX_RETRIES")),  # type: ignore
         )

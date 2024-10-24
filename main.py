@@ -17,39 +17,41 @@ async def main():
     """
     Main function to run the discovery process.
     """
-    config = Config.load_from_env()
-    call_manager = CallManager(config)
-    output_generator = OutputGenerator()
-    discovery_agent = DiscoveryAgent(call_manager, output_generator)
-
-    webhook_server = WebhookServer(call_manager, config.WEBHOOK_PORT)
-    await webhook_server.start()
-
     try:
-        results = await discovery_agent.explore_phone_tree(config.AGENT_PHONE_NUMBER)
+        config = Config.load_from_env()
+        call_manager = CallManager(config)
+        output_generator = OutputGenerator()
+        discovery_agent = DiscoveryAgent(call_manager, output_generator)
 
-        if results:
-            logger.info(f"Exploration results: {results}")
+        webhook_server = WebhookServer(call_manager, config.WEBHOOK_PORT)
+        await webhook_server.start()
 
-            # print the summary report
-            output_generator.generate_summary_report(discovery_agent.phone_tree)
-
-            # print the tree
-            output_generator.print_tree(discovery_agent.phone_tree.root)
-
-            # Generate and save the Mermaid graph after exploration is complete
-            mermaid_graph = output_generator.generate_mermaid_graph(
-                discovery_agent.phone_tree
+        try:
+            results = await discovery_agent.explore_phone_tree(
+                config.AGENT_PHONE_NUMBER,
             )
-            with open("phone_tree.mmd", "w") as f:
-                f.write(mermaid_graph)
 
-            print("Exploration complete. Mermaid graph saved to phone_tree.mmd")
-        else:
-            logger.error("No results found from exploration")
-    finally:
-        await call_manager.close()
-        await webhook_server.stop()
+            if results:
+                logger.info(f"Exploration results: {results}")
+                output_generator.generate_summary_report(discovery_agent.phone_tree)
+                output_generator.print_tree(discovery_agent.phone_tree.root)
+                mermaid_graph = output_generator.generate_mermaid_graph(
+                    discovery_agent.phone_tree
+                )
+                with open("phone_tree.mmd", "w") as f:
+                    f.write(mermaid_graph)
+                print("Exploration complete. Mermaid graph saved to phone_tree.mmd")
+            else:
+                logger.error("No results found from exploration")
+        except asyncio.TimeoutError:
+            logger.error("Exploration timed out")
+        except Exception as e:
+            logger.exception(f"An error occurred during exploration: {str(e)}")
+        finally:
+            await call_manager.close()
+            await webhook_server.stop()
+    except Exception as e:
+        logger.exception(f"An error occurred during setup: {str(e)}")
 
 
 if __name__ == "__main__":

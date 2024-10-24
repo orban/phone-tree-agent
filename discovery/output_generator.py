@@ -1,7 +1,7 @@
-from typing import Dict
 import json
 from loguru import logger
 from discovery.phone_tree import PhoneTree
+from discovery.phone_tree import TreeNode
 
 
 class OutputGenerator:
@@ -102,8 +102,8 @@ class OutputGenerator:
             f.write(summary)
         logger.info("Summary report generated and saved as phone_tree_summary.txt")
 
-    def print_tree(self, node, prefix="", is_last=True):
-        print(prefix + ("└── " if is_last else "├── ") + str(node.value))
+    def print_tree(self, node: TreeNode, prefix="", is_last=True):
+        print(prefix + ("└── " if is_last else "├── ") + str(node.option))
         child_count = len(node.children)
         for i, (key, child) in enumerate(node.children.items()):
             is_last_child = i == child_count - 1

@@ -1,0 +1,4 @@
+app.log
+discovery/__pycache__
+call_management/__pycache__
+.env

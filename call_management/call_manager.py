@@ -162,6 +162,7 @@ class CallManager:
                 timeout=self.config.TIMEOUT_SECONDS,
                 temperature=0.0,
             )
+            logger.debug(f"Transcription: {transcript.text}")
             return transcript.text
         except Exception as e:
             logger.error(f"Error transcribing audio: {str(e)}")
