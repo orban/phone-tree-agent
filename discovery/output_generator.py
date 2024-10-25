@@ -1,7 +1,10 @@
 import json
-from loguru import logger
+import logging
 from discovery.phone_tree import PhoneTree
 from discovery.phone_tree import TreeNode
+
+
+logger = logging.getLogger(__name__)
 
 
 class OutputGenerator:
@@ -11,6 +14,7 @@ class OutputGenerator:
 
     def __init__(self, output_file: str = "phone_tree_progress.json"):
         self.output_file = output_file
+        self.tree_structure = {}
 
     async def update_progress(self, phone_tree: PhoneTree):
         """
@@ -18,8 +22,11 @@ class OutputGenerator:
         """
         logger.info("Updating progress")
 
+        # Convert the phone tree to a dictionary
+        self.tree_structure = self._to_dict(phone_tree.root)
+
         # Write updated tree to file
-        await self._write_to_file(phone_tree.to_dict())
+        await self._write_to_file(self.tree_structure)
 
         logger.info("Progress updated and written to file")
 
@@ -102,11 +109,30 @@ class OutputGenerator:
             f.write(summary)
         logger.info("Summary report generated and saved as phone_tree_summary.txt")
 
-    def print_tree(self, node: TreeNode, prefix="", is_last=True):
-        print(prefix + ("└── " if is_last else "├── ") + str(node.option))
-        child_count = len(node.children)
-        for i, (key, child) in enumerate(node.children.items()):
-            is_last_child = i == child_count - 1
-            self.print_tree(
-                child, prefix + ("    " if is_last else "│   "), is_last_child
-            )
+    def print_tree(self, node: TreeNode, prefix: str = "", is_last: bool = True):
+        if isinstance(node, dict):
+            for index, (key, value) in enumerate(node.items()):
+                is_last_item = index == len(node) - 1
+                print(f"{prefix}{'└── ' if is_last else '├── '}{key}")
+                self.print_tree(value, prefix + ('    ' if is_last else '│   '), is_last_item)
+        elif isinstance(node, TreeNode):
+            print(f"{prefix}{'└── ' if is_last else '├── '}{node.option}")
+            for index, child in enumerate(node.children.values()):
+                is_last_item = index == len(node.children) - 1
+                self.print_tree(child, prefix + ('    ' if is_last else '│   '), is_last_item)
+
+    def _to_dict(self, node):
+        result = {}
+        for child in node.children.values():
+            result[child.option] = self._to_dict(child)
+        return result
+
+    def print_tree(self, node, depth=0):
+        if isinstance(node, dict):
+            for key, value in node.items():
+                print("  " * depth + key)
+                self.print_tree(value, depth + 1)
+        elif isinstance(node, TreeNode):
+            print("  " * depth + node.option)
+            for child in node.children.values():
+                self.print_tree(child, depth + 1)

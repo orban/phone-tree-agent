@@ -12,11 +12,13 @@ class Config(BaseModel):
     WEBHOOK_URL: str
     WEBHOOK_PORT: int = Field(default=8080)
     AGENT_PHONE_NUMBER: str
-    CONCURRENT_CALLS: int = Field(default=1)
+    CONCURRENT_CALLS: int = Field(default=3)
     MAX_DEPTH: int = Field(default=10)
     TIMEOUT_SECONDS: int = Field(default=300)
     RETRY_DELAY_SECONDS: int = Field(default=10)
     MAX_RETRIES: int = Field(default=3)
+    CALL_TIMEOUT_SECONDS: int = 300  # 5 minutes
+    DEEPGRAM_API_KEY: str
 
     @classmethod
     def load_from_env(cls):
@@ -33,4 +35,5 @@ class Config(BaseModel):
             TIMEOUT_SECONDS=int(os.getenv("TIMEOUT_SECONDS")),  # type: ignore
             RETRY_DELAY_SECONDS=int(os.getenv("RETRY_DELAY_SECONDS")),  # type: ignore
             MAX_RETRIES=int(os.getenv("MAX_RETRIES")),  # type: ignore
+            DEEPGRAM_API_KEY=os.getenv("DEEPGRAM_API_KEY"),  # type: ignore
         )
