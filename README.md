@@ -1,74 +1,105 @@
-Discovering Voice Agent Scenarios
-Your job is to test various AI Voice Agents for small businesses: home repair companies, local vet, car shop, etc.
+# AI Voice Agent Discovery Tool
 
-These agents can help with simple tasks like collecting information about new customers and booking appointments.
+This repository contains a tool for automatically discovering and mapping out the conversation flow of AI Voice Agents used by small businesses. The tool simulates phone calls to explore all possible paths in the agent's decision tree, creating a comprehensive map of the agent's capabilities.
 
-In order to thoroughly test all the possible scenarios that the agents are capable of handling, you will need to run some discovery process that would repeatedly call each agent to discover the call tree / graph.
+## Purpose and Components
+
+The main purpose of this tool is to automate the discovery process of AI Voice Agent scenarios. It consists of several key components working together:
+
+1. **DiscoveryAgent**: Orchestrates the exploration process, making calls and building the phone tree.
+2. **PhoneTree**: Represents the structure of the conversation flow.
+3. **CallManager**: Handles the actual phone calls and transcription.
+4. **OutputGenerator**: Generates various outputs like JSON, Mermaid graphs, and summary reports.
+
+These components work together to explore the AI Voice Agent's decision tree, transcribe the conversations, extract the conversation flow, and generate a structured representation of the agent's capabilities.
+
+## Quickstart Guide
+
+### Prerequisites
+
+This project uses `uv` for package management instead of `pip` or `poetry`. To install `uv`, run:
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+### Setup
+
+1. Clone the repository:
+   
+   ```bash
+   git clone https://github.com/orban/hamming-takehome.git
+   cd hamming-takehome
+   ```
+
+2. Create a virtual environment and install dependencies:
+   
+   ```bash
+   uv venv
+   source .venv/bin/activate  # On Windows, use `.venv\Scripts\activate`
+   uv sync
+   ```
+
+3. Set up your environment variables in a `.env` file:
+   
+   ```
+   OPENAI_API_KEY=your_openai_api_key
+   AGENT_PHONE_NUMBER=+1234567890
+   WEBHOOK_PORT=8000
+   ```
+
+See `.env.example` for required environment variables.
+
+### Running the Program
+
+To run the program, use:
+
+```bash
+uv run main.py
+```
+
+This will start the discovery process, make calls to the AI Voice Agent, and generate the output files.
+
+## Example Output
+
+Here's an example of a transcription and the resulting phone tree:
+
+### Transcription:
 
 
+Agent: Hello, thank you for calling Anthem Air Conditioning and Plumbing. This is Olivia speaking. Are you an existing customer?
 
+Customer: Yes, I am.
 
-EXERCISE
+Agent: Great! Is this an emergency?
 
-The task for this exercise is to automate the call tree / graph discovery process.
+Customer: No, it's not an emergency.
 
-Given a phone number of an agent and a short description about what the agent is set up to do, automate a discovery process using a series of synthetic phone call conversations.
+Agent: Alright. What kind of issue are you facing?
 
-The result should be the set of all the possible scenarios that the agent is capable of handling.
+Customer: I'm having a problem with my heating.
 
-See the attached diagram as an example of a simple Voice AI Agent and the possible scenarios it can handle.
+Agent: I understand. We can help with that. An agent will call you back shortly to schedule an appointment. Is there anything else I can help you with?
 
+Customer: No, that's all. Thank you.
 
+Agent: You're welcome. Have a great day! Goodbye.
 
+Customer: Goodbye.
 
+### Resulting Phone Tree:
 
-
-PHONE CALL ENDPOINTS
-
-You are given a set of helper endpoints that you can use to easily start new phone calls and retrieve call recordings.
-
-POST https://app.hamming.ai/api/rest/exercise/start-call
-Authorization: Bearer <api_token>
-
-Request Body
-Response
-Webhook Payload
-{
-  phone_number: <Number to call>
-  prompt: <Agent System Prompt>
-  webhook_url: <Your Webhook URL>
-}
-{
-  id: string
-}
-{
-  id: string
-  status: string
-  recording_available: bool
-}
-
-
-
-GET https://app.hamming.ai/api/media/exercise?id={id}
-Response: audio/wav
-DeepGram, Assembly (audio to transcript) => free trials.
-AI Model is GPT-4o
-
-Test Phone Number: +14153580761
-
-EXPECTED OUTPUT
-Either a graph structure (mermaid or textual) or a dataset with all the graph traversals is a good output
-
-GRADING
-Meets all the specified requirements in this doc
-Is valid runnable code
-Has appropriate usage of design patterns, data structures, concurrency
-Has extendable architecture
-Has console or visual outputs that allows the interviewers to follow the system progress in realtime
-Has production-quality code cleanliness
-Has production-quality docs on all public functions
-
-TIMELINES & EXPECTATIONS
-This take-home requires full-time, intensive effort. We generally hear back from folks within 48 hours.
-You can use any programming language, framework, and IDE you’d like; however, we strongly discourage the use of microservices, cloud deployments, RPCs, DBs, etc. due to time constraints.
-
+```
+Final Phone Tree Structure:
+└── root
+    └── is_existing_customer
+        └── yes
+            └── is_emergency
+                └── no
+                    └── describe_issue
+                        ├── heating
+                           └── schedule_callback
+                               └── yes
+                                   └── end_call
+                                       └── goodbye
+```
