@@ -24,6 +24,7 @@ class DiscoveryAgent:
         results: Dict[Tuple[str, ...], Dict[str, Any]] = {}
         max_retries = 3
         retry_delay = 5  # seconds
+        explored_paths = set()
 
         for attempt in range(max_retries):
             try:
@@ -32,14 +33,21 @@ class DiscoveryAgent:
                 ] = await self.phone_tree.get_unexplored_paths()
                 while paths_to_explore:
                     for path in paths_to_explore:
+                        path_tuple = tuple(path)
+                        if path_tuple in explored_paths:
+                            continue
+                        
                         result: Dict[str, Any] = await self.explore_path(
                             phone_number, path
                         )
-                        results[tuple(path)] = result
-                        extracted_path: List[
-                            Tuple[str, str]
-                        ] = await self.phone_tree.extract_path(result["transcription"])
-                        await self.phone_tree.add_path(extracted_path)
+                        results[path_tuple] = result
+                        explored_paths.add(path_tuple)
+                        
+                        if "transcription" in result:
+                            extracted_path: List[
+                                Tuple[str, str]
+                            ] = await self.phone_tree.extract_path(result["transcription"])
+                            await self.phone_tree.add_path(extracted_path)
                     paths_to_explore = await self.phone_tree.get_unexplored_paths()
 
                 if await self.phone_tree.validate_tree():

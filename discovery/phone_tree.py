@@ -332,7 +332,7 @@ class PhoneTree:
     async def _get_unexplored_paths(self) -> List[List[str]]:
         def dfs(node: TreeNode, current_path: List[str]) -> List[List[str]]:
             if not node.children or not node.explored:
-                return [current_path]
+                return [current_path] if not node.explored else []
             paths = []
             for label, child in node.children.items():
                 paths.extend(dfs(child, current_path + [label]))
@@ -463,6 +463,7 @@ class PhoneTree:
             logger.error("Invalid tree structure detected")
         return is_valid
 
+
     async def simplify_tree(self):
         """
         Simplify the phone tree by merging similar nodes and removing redundancies.
@@ -474,24 +475,22 @@ class PhoneTree:
 
             children_to_merge = {}
             for label, child in node.children.items():
-                normalized_label = await self.label_normalizer.get_normalized_label(
-                    label
-                )
-                if normalized_label in children_to_merge:
-                    children_to_merge[normalized_label].append((label, child))
+                if label in children_to_merge:
+                    children_to_merge[label].append((label, child))
                 else:
-                    children_to_merge[normalized_label] = [(label, child)]
+                    children_to_merge[label] = [(label, child)]
 
-            for normalized_label, children in children_to_merge.items():
+            for label, children in children_to_merge.items():
                 if len(children) > 1:
-                    merged_node = TreeNode(normalized_label)
+                    merged_node = TreeNode(label)
                     for _, child in children:
                         for sub_label, sub_child in child.children.items():
                             merged_node.add_child(sub_label, sub_child)
                         node.remove_child(child)
-                    node.add_child(normalized_label, merged_node)
+                    node.add_child(label, merged_node)
 
             for child in node.children.values():
                 await merge_similar_nodes(child)
 
         await merge_similar_nodes(self.root)
+
