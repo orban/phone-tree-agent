@@ -27,7 +27,7 @@ async def main():
         output_generator = OutputGenerator()
         openai_client = AsyncOpenAI(api_key=config.OPENAI_API_KEY)
         discovery_agent = DiscoveryAgent(call_manager, output_generator, openai_client)
-        discovery_agent.phone_tree = PhoneTree(openai_client)
+        discovery_agent.phone_tree = PhoneTree(openai_client, output_generator)
 
         webhook_server = WebhookServer(call_manager, config.WEBHOOK_PORT)
         await webhook_server.start()
@@ -39,8 +39,8 @@ async def main():
         if results:
             logger.info(f"Exploration results: {results}")
             output_generator.generate_summary_report(discovery_agent.phone_tree)
-            output_generator.print_tree(discovery_agent.phone_tree.root)
-            mermaid_graph = output_generator.generate_mermaid_graph(
+            await output_generator.print_tree(discovery_agent.phone_tree.root)
+            mermaid_graph = await output_generator.generate_mermaid_graph(
                 discovery_agent.phone_tree
             )
             with open("phone_tree.mmd", "w") as f:
