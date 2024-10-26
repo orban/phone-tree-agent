@@ -26,14 +26,14 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 ### Setup
 
 1. Clone the repository:
-   
+
    ```bash
    git clone https://github.com/orban/hamming-takehome.git
    cd hamming-takehome
    ```
 
 2. Create a virtual environment and install dependencies:
-   
+
    ```bash
    uv venv
    source .venv/bin/activate  # On Windows, use `.venv\Scripts\activate`
@@ -41,8 +41,8 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
    ```
 
 3. Set up your environment variables in a `.env` file:
-   
-   ```
+
+   ```bash
    OPENAI_API_KEY=your_openai_api_key
    AGENT_PHONE_NUMBER=+1234567890
    WEBHOOK_PORT=8000
@@ -64,8 +64,7 @@ This will start the discovery process, make calls to the AI Voice Agent, and gen
 
 Here's an example of a transcription and the resulting phone tree:
 
-### Transcription:
-
+### Transcription
 
 Agent: Hello, thank you for calling Anthem Air Conditioning and Plumbing. This is Olivia speaking. Are you an existing customer?
 
@@ -87,19 +86,14 @@ Agent: You're welcome. Have a great day! Goodbye.
 
 Customer: Goodbye.
 
-### Resulting Phone Tree:
+### Resulting Phone Tree
 
-```
+```python
 Final Phone Tree Structure:
 └── root
-    └── is_existing_customer
-        └── yes
-            └── is_emergency
-                └── no
-                    └── describe_issue
-                        ├── heating
-                           └── schedule_callback
-                               └── yes
-                                   └── end_call
-                                       └── goodbye
+    └── existing_customer
+        └── not_emergency
+            └── not_emergency
+                ├── heating_issue
+                └── air_conditioning_issue             
 ```
