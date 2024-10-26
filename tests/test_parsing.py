@@ -52,6 +52,8 @@ async def test_parsing_and_merging() -> list[dict]:
                 await discovery_agent.phone_tree.add_path(extracted_path)
 
     print("\nFinal Phone Tree Structure:")
-    discovery_agent.phone_tree.print_tree()
+    await discovery_agent.output_generator.print_tree(
+        discovery_agent.phone_tree.root
+    )
 
     return results

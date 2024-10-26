@@ -1,10 +1,9 @@
 import json
-import logging
+from loguru import logger
 from discovery.phone_tree import PhoneTree
 from discovery.phone_tree import TreeNode
 
 
-logger = logging.getLogger(__name__)
 
 
 class OutputGenerator:
@@ -23,7 +22,7 @@ class OutputGenerator:
         logger.info("Updating progress")
 
         # Convert the phone tree to a dictionary
-        self.tree_structure = self._to_dict(phone_tree.root)
+        self.tree_structure = await self._to_dict(phone_tree.root)
 
         # Write updated tree to file
         await self._write_to_file(self.tree_structure)
@@ -40,7 +39,7 @@ class OutputGenerator:
         except IOError as e:
             logger.error(f"Error writing to file: {str(e)}")
 
-    def generate_mermaid_graph(self, phone_tree: PhoneTree) -> str:
+    async def generate_mermaid_graph(self, phone_tree: PhoneTree) -> str:
         """
         Generates a Mermaid graph from the discovered tree.
         """
@@ -56,11 +55,11 @@ class OutputGenerator:
             return lines
 
         graph_lines = ["graph TD"]
-        graph_lines.extend(traverse(phone_tree.to_dict()))
+        graph_lines.extend(traverse(await self._to_dict(phone_tree.root)))
         return "\n".join(graph_lines)
 
-    def generate_json_dataset(self, phone_tree: PhoneTree):
-        def node_to_dict(node, path):
+    async def generate_json_dataset(self, phone_tree: PhoneTree):
+        async def node_to_dict(node, path):
             node_data = {
                 "id": "_".join(path) if path else "root",
                 "label": node.option,
@@ -109,30 +108,39 @@ class OutputGenerator:
             f.write(summary)
         logger.info("Summary report generated and saved as phone_tree_summary.txt")
 
-    def print_tree(self, node: TreeNode, prefix: str = "", is_last: bool = True):
-        if isinstance(node, dict):
-            for index, (key, value) in enumerate(node.items()):
-                is_last_item = index == len(node) - 1
-                print(f"{prefix}{'└── ' if is_last else '├── '}{key}")
-                self.print_tree(value, prefix + ('    ' if is_last else '│   '), is_last_item)
-        elif isinstance(node, TreeNode):
-            print(f"{prefix}{'└── ' if is_last else '├── '}{node.option}")
-            for index, child in enumerate(node.children.values()):
-                is_last_item = index == len(node.children) - 1
-                self.print_tree(child, prefix + ('    ' if is_last else '│   '), is_last_item)
+    async def print_tree(self, node: TreeNode, prefix: str = "", is_last: bool = True):
+        stack = [(node, prefix, is_last)]
+        while stack:
+            current_node, current_prefix, current_is_last = stack.pop()
+            if isinstance(current_node, dict):
+                items = list(current_node.items())
+                for index, (key, value) in enumerate(reversed(items)):
+                    is_last_item = index == 0
+                    print(f"{current_prefix}{'└── ' if current_is_last else '├── '}{key}")
+                    stack.append((value, current_prefix + ('    ' if current_is_last else '│   '), is_last_item))
+            elif isinstance(current_node, TreeNode):
+                print(f"{current_prefix}{'└── ' if current_is_last else '├── '}{current_node.content}")
+                children = list(current_node.children.values())
+                for index, child in enumerate(reversed(children)):
+                    is_last_item = index == 0
+                    stack.append((child, current_prefix + ('    ' if current_is_last else '│   '), is_last_item))
+                
+            
 
-    def _to_dict(self, node):
+    async def _to_dict(self, node):
         result = {}
         for child in node.children.values():
             result[child.option] = self._to_dict(child)
         return result
 
-    def print_tree(self, node, depth=0):
-        if isinstance(node, dict):
-            for key, value in node.items():
-                print("  " * depth + key)
-                self.print_tree(value, depth + 1)
-        elif isinstance(node, TreeNode):
-            print("  " * depth + node.option)
-            for child in node.children.values():
-                self.print_tree(child, depth + 1)
+    async def print_tree_to_string(self, node: TreeNode, prefix: str = "", is_last: bool = True) -> str:
+        result = []
+        result.append(f"{prefix}{'└── ' if is_last else '├── '}{node.content}")
+        
+        child_count = len(node.children)
+        for index, (child_key, child) in enumerate(node.children.items()):
+            is_last_item = index == child_count - 1
+            new_prefix = prefix + ('    ' if is_last else '│   ')
+            result.append(await self.print_tree_to_string(child, new_prefix, is_last_item))
+        
+        return "\n".join(result)
