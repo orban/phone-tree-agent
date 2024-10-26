@@ -463,53 +463,6 @@ class PhoneTree:
             logger.error("Invalid tree structure detected")
         return is_valid
 
-    async def validate_path(
-        self, extracted_path: List[Tuple[str, str]]
-    ) -> List[Tuple[str, str]]:
-        """
-        Validate the extracted path against the known tree structure and correct any inconsistencies.
-        """
-        validated_path = []
-        current_node = self.root
-
-        for decision_point, choice in extracted_path:
-            normalized_decision = await self.label_normalizer.get_normalized_label(
-                decision_point
-            )
-            normalized_choice = await self.label_normalizer.get_normalized_label(choice)
-
-            if normalized_decision in current_node.children:
-                validated_path.append((normalized_decision, normalized_choice))
-                current_node = current_node.children[normalized_decision]
-            else:
-                # If the decision point doesn't exist, try to find a similar one
-                similar_node = self._find_similar_node(
-                    current_node, normalized_decision
-                )
-                if similar_node:
-                    validated_path.append((similar_node, normalized_choice))
-                    current_node = current_node.children[similar_node]
-                else:
-                    # If no similar node is found, stop validation
-                    break
-
-        return validated_path
-
-    def _find_similar_node(self, node: TreeNode, target: str) -> Optional[str]:
-        """
-        Find a similar node label using string similarity.
-        """
-        best_match = None
-        best_ratio = 0
-
-        for label in node.children.keys():
-            ratio = SequenceMatcher(None, target, label).ratio()
-            if ratio > best_ratio and ratio > 0.7:  # Adjust threshold as needed
-                best_match = label
-                best_ratio = ratio
-
-        return best_match
-
     async def simplify_tree(self):
         """
         Simplify the phone tree by merging similar nodes and removing redundancies.

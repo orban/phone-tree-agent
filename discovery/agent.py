@@ -39,10 +39,7 @@ class DiscoveryAgent:
                         extracted_path: List[
                             Tuple[str, str]
                         ] = await self.phone_tree.extract_path(result["transcription"])
-                        validated_path = await self.phone_tree.validate_path(
-                            extracted_path
-                        )
-                        await self.phone_tree.add_path(validated_path)
+                        await self.phone_tree.add_path(extracted_path)
                     paths_to_explore = await self.phone_tree.get_unexplored_paths()
 
                 if await self.phone_tree.validate_tree():
