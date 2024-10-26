@@ -36,37 +36,37 @@ class CallManager:
         logger.info("CallManager initialized")
 
     async def make_call(self, phone_number: str, prompt: str) -> CallResult:
-        for attempt in range(self.config.MAX_RETRIES):
-            try:
-                logger.debug(
-                    "Call attempt {} of {}", attempt + 1, self.config.MAX_RETRIES
-                )
-                return await asyncio.wait_for(
-                    self._make_call_attempt(phone_number, prompt),
-                    timeout=self.config.CALL_TIMEOUT_SECONDS * 2,  # Double the timeout
-                )
-            except asyncio.TimeoutError:
-                logger.warning(
-                    "Call attempt {} timed out after {} seconds",
-                    attempt + 1,
-                    self.config.CALL_TIMEOUT_SECONDS * 2,
-                )
-                return CallResult(
-                    id="timeout",
-                    status="timeout",
-                    message=f"Call timed out after {self.config.CALL_TIMEOUT_SECONDS * 2} seconds",
-                )
-            except Exception as e:
-                logger.error(
-                    "Call attempt {} failed: {}", attempt + 1, str(e), exc_info=True
-                )
+        """
+        Make a call to the specified phone number with the given prompt.
 
-        logger.error("All {} call attempts failed", self.config.MAX_RETRIES)
-        return CallResult(
-            id="error",
-            status="failed",
-            message=f"All {self.config.MAX_RETRIES} call attempts failed",
-        )
+        Args:
+            phone_number (str): The phone number to call.
+            prompt (str): The prompt for the AI assistant.
+
+        Returns:
+            CallResult: The result of the call.
+
+        Raises:
+            ValueError: If the phone number or prompt is invalid.
+        """
+        if not self._validate_phone_number(phone_number):
+            raise ValueError("Invalid phone number format")
+
+        if not prompt or len(prompt) > 1000:
+            raise ValueError("Invalid prompt: must be non-empty and less than 1000 characters")
+
+        try:
+            result: CallResult = await self._make_call_attempt(phone_number, prompt)
+            return result
+        except aiohttp.ClientError as e:
+            logger.error(f"Network error during call: {str(e)}")
+            return CallResult(status="failed", message="Network error", id="")
+        except asyncio.TimeoutError:
+            logger.error("Call timed out")
+            return CallResult(status="timeout", message="Call timed out", id="")
+        except Exception as e:
+            logger.error(f"Unexpected error during call: {str(e)}")
+            return CallResult(status="failed", message="Unexpected error", id="")
 
     async def _make_call_attempt(self, phone_number: str, prompt: str) -> CallResult:
         """
@@ -306,3 +306,17 @@ class CallManager:
                 "Error in transcribe_audio for call {}: {}", call_id, str(e)
             )
             raise
+
+    def _validate_phone_number(self, phone_number: str) -> bool:
+        """
+        Validate the format of the phone number.
+
+        Args:
+            phone_number (str): The phone number to validate.
+
+        Returns:
+            bool: True if the phone number is valid, False otherwise.
+        """
+        import re
+        pattern = r'^\+?1?\d{9,15}$'
+        return bool(re.match(pattern, phone_number))

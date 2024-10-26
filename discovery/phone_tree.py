@@ -1,9 +1,10 @@
-from typing import List, Dict, Optional, Tuple, Set
+from typing import List, Dict, Tuple, Set, Optional
 from loguru import logger
 from openai import AsyncOpenAI
 from collections import defaultdict
-import asyncio
 import json
+from functools import lru_cache
+from difflib import SequenceMatcher
 
 logger = logger.bind(name="phone_tree")
 
@@ -23,6 +24,12 @@ class TreeNode:
         self.content = content
         self.children: Dict[str, TreeNode] = {}
         self.explored = False
+
+    def add_child(self, label: str, node: "TreeNode"):
+        self.children[label] = node
+
+    def remove_child(self, node: "TreeNode"):
+        self.children = {k: v for k, v in self.children.items() if v != node}
 
 
 class LabelNormalizer:
@@ -230,6 +237,7 @@ class PhoneTree:
         self.openai_client = openai_client
         self.output_generator = output_generator
         logger.info("PhoneTree initialized with OpenAI client")
+        self.cache = {}
 
     async def add_path(self, path: List[Tuple[str, str]]) -> None:
         """
@@ -245,7 +253,9 @@ class PhoneTree:
         logger.info(f"Adding path: {path}")
         current_node = self.root
         for decision_point, choice in path:
-            normalized_decision = await self.label_normalizer.get_normalized_label(decision_point)
+            normalized_decision = await self.label_normalizer.get_normalized_label(
+                decision_point
+            )
             normalized_choice = await self.label_normalizer.get_normalized_label(choice)
 
             if normalized_decision == "root":
@@ -271,6 +281,7 @@ class PhoneTree:
 
         current_node.explored = True
         logger.info(f"Path added successfully: {path}")
+        self.cache.clear()  # Clear cache when tree structure changes
 
     async def _is_path_explored(self, path: List[Tuple[str, str]]) -> bool:
         """
@@ -310,7 +321,15 @@ class PhoneTree:
         Returns:
             List[List[str]]: A list of unexplored paths, where each path is a list of node labels.
         """
+        cache_key = hash(self.root)
+        if cache_key in self.cache:
+            return self.cache[cache_key]
 
+        result = await self._get_unexplored_paths()
+        self.cache[cache_key] = result
+        return result
+
+    async def _get_unexplored_paths(self) -> List[List[str]]:
         def dfs(node: TreeNode, current_path: List[str]) -> List[List[str]]:
             if not node.children or not node.explored:
                 return [current_path]
@@ -327,15 +346,37 @@ class PhoneTree:
         """
         return await self.output_generator.print_tree_to_string(self.root)
 
+    @lru_cache(maxsize=100)
     async def extract_path(self, transcript: str) -> List[Tuple[str, str]]:
+        """
+        Extract the path taken in a phone tree conversation from the given transcript.
+
+        This method uses OpenAI's GPT-4 model to analyze the transcript and extract
+        the decision points and choices made during the conversation.
+
+        Args:
+            transcript (str): The conversation transcript to analyze.
+
+        Returns:
+            List[Tuple[str, str]]: A list of tuples representing the path taken.
+            Each tuple contains (decision_point, choice).
+
+        Raises:
+            Exception: If there's an error in the OpenAI API call.
+
+        Note:
+            - The method uses the current phone tree structure to provide context.
+            - It handles empty transcripts and unexpected API responses.
+            - The extracted path always starts with the 'root' decision point.
+        """
         logger.info(f"Extracting path from transcript of length {len(transcript)}")
-        
+
         if not transcript.strip():
             logger.warning("Empty transcript provided. Skipping path extraction.")
             return []
-        
+
         tree_structure = await self.output_generator.print_tree_to_string(self.root)
-        
+
         functions = [
             {
                 "name": "extract_phone_tree_path",
@@ -378,14 +419,17 @@ class PhoneTree:
             response = await self.openai_client.chat.completions.create(
                 model="gpt-4",
                 messages=[{"role": "user", "content": prompt}],
-                functions=functions,
+                functions=functions,  # type: ignore
                 function_call={"name": "extract_phone_tree_path"},
             )
 
             function_call = response.choices[0].message.function_call
             if function_call and function_call.name == "extract_phone_tree_path":
                 path_data = json.loads(function_call.arguments)
-                path = [(item['decision_point'], item['choice']) for item in path_data['path']]
+                path = [
+                    (item["decision_point"], item["choice"])
+                    for item in path_data["path"]
+                ]
             else:
                 logger.error("Unexpected response format from OpenAI API")
                 path = []
@@ -397,8 +441,9 @@ class PhoneTree:
         logger.info(f"Extracted path with {len(path)} elements")
         return path
 
-    def _validate_tree_structure(self, node: TreeNode, visited: Set[TreeNode] = set()) -> bool:
-
+    def _validate_tree_structure(
+        self, node: TreeNode, visited: Set[TreeNode] = set()
+    ) -> bool:
         if node in visited:
             logger.error(f"Loop detected in tree structure at node: {node.content}")
             return False
@@ -418,11 +463,82 @@ class PhoneTree:
             logger.error("Invalid tree structure detected")
         return is_valid
 
+    async def validate_path(
+        self, extracted_path: List[Tuple[str, str]]
+    ) -> List[Tuple[str, str]]:
+        """
+        Validate the extracted path against the known tree structure and correct any inconsistencies.
+        """
+        validated_path = []
+        current_node = self.root
 
+        for decision_point, choice in extracted_path:
+            normalized_decision = await self.label_normalizer.get_normalized_label(
+                decision_point
+            )
+            normalized_choice = await self.label_normalizer.get_normalized_label(choice)
 
+            if normalized_decision in current_node.children:
+                validated_path.append((normalized_decision, normalized_choice))
+                current_node = current_node.children[normalized_decision]
+            else:
+                # If the decision point doesn't exist, try to find a similar one
+                similar_node = self._find_similar_node(
+                    current_node, normalized_decision
+                )
+                if similar_node:
+                    validated_path.append((similar_node, normalized_choice))
+                    current_node = current_node.children[similar_node]
+                else:
+                    # If no similar node is found, stop validation
+                    break
 
+        return validated_path
 
+    def _find_similar_node(self, node: TreeNode, target: str) -> Optional[str]:
+        """
+        Find a similar node label using string similarity.
+        """
+        best_match = None
+        best_ratio = 0
 
+        for label in node.children.keys():
+            ratio = SequenceMatcher(None, target, label).ratio()
+            if ratio > best_ratio and ratio > 0.7:  # Adjust threshold as needed
+                best_match = label
+                best_ratio = ratio
 
+        return best_match
 
+    async def simplify_tree(self):
+        """
+        Simplify the phone tree by merging similar nodes and removing redundancies.
+        """
 
+        async def merge_similar_nodes(node):
+            if not node.children:
+                return
+
+            children_to_merge = {}
+            for label, child in node.children.items():
+                normalized_label = await self.label_normalizer.get_normalized_label(
+                    label
+                )
+                if normalized_label in children_to_merge:
+                    children_to_merge[normalized_label].append((label, child))
+                else:
+                    children_to_merge[normalized_label] = [(label, child)]
+
+            for normalized_label, children in children_to_merge.items():
+                if len(children) > 1:
+                    merged_node = TreeNode(normalized_label)
+                    for _, child in children:
+                        for sub_label, sub_child in child.children.items():
+                            merged_node.add_child(sub_label, sub_child)
+                        node.remove_child(child)
+                    node.add_child(normalized_label, merged_node)
+
+            for child in node.children.values():
+                await merge_similar_nodes(child)
+
+        await merge_similar_nodes(self.root)

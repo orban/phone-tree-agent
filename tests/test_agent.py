@@ -1,47 +1,77 @@
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 from discovery.agent import DiscoveryAgent
+from discovery.phone_tree import PhoneTree
+from discovery.output_generator import OutputGenerator
+from call_management.call_manager import CallManager
 
-class TestDiscoveryAgent:
-    @pytest.mark.asyncio
-    async def test_explore_phone_tree_all_paths(self):
-        call_manager = AsyncMock()
-        output_generator = AsyncMock()
-        agent = DiscoveryAgent(call_manager, output_generator)
 
-        call_manager.make_call.return_value = AsyncMock(status="completed", transcription="Press 1 for sales, Press 2 for support")
-        call_manager.openai.chat.completions.create.return_value = AsyncMock(choices=[MagicMock(message=MagicMock(function_call=MagicMock(name="extract_options", arguments=json.dumps({"options": ["sales", "support"]})))])
+@pytest.fixture
+def mock_call_manager():
+    return AsyncMock(spec=CallManager)
 
-        results = await agent.explore_phone_tree("1234567890")
-        assert results == {
-            (): {"path": [], "transcription": "Press 1 for sales, Press 2 for support", "options": ["sales", "support"]},
-            ('sales',): {"path": ["sales"], "transcription": "Press 1 for sales, Press 2 for support", "options": ["sales", "support"]},
-            ('support',): {"path": ["support"], "transcription": "Press 1 for sales, Press 2 for support", "options": ["sales", "support"]}
-        }
 
-    @pytest.mark.asyncio
-    async def test_explore_path_call_failure(self):
-        call_manager = AsyncMock()
-        output_generator = AsyncMock()
-        agent = DiscoveryAgent(call_manager, output_generator)
+@pytest.fixture
+def mock_output_generator():
+    return AsyncMock(spec=OutputGenerator)
 
-        call_manager.make_call.return_value = AsyncMock(status="failed", message="Network error", id="123")
 
-        result = await agent.explore_path("1234567890")
-        assert result == {
-            "path": [],
-            "error": "Network error",
-            "id": "123",
-            "status": "failed"
-        }
+@pytest.fixture
+def mock_openai_client():
+    return AsyncMock()
 
-    @pytest.mark.asyncio
-    async def test_extract_options_no_options_found(self):
-        call_manager = AsyncMock()
-        output_generator = AsyncMock()
-        agent = DiscoveryAgent(call_manager, output_generator)
 
-        call_manager.openai.chat.completions.create.return_value = AsyncMock(choices=[MagicMock(message=MagicMock(function_call=MagicMock(name="extract_options", arguments=json.dumps({"options": []})))])
+@pytest.fixture
+def discovery_agent(mock_call_manager, mock_output_generator, mock_openai_client):
+    agent = DiscoveryAgent(mock_call_manager, mock_output_generator, mock_openai_client)
+    agent.phone_tree = AsyncMock(spec=PhoneTree)
+    return agent
 
-        options = await agent._extract_options("No options available", [])
-        assert options == []
+
+@pytest.mark.asyncio
+async def test_explore_phone_tree(discovery_agent):
+    discovery_agent.phone_tree.get_unexplored_paths.side_effect = [
+        [["root", "option1"]],
+        [],
+    ]
+    discovery_agent.explore_path = AsyncMock(
+        return_value={"transcription": "Test transcription"}
+    )
+    discovery_agent.phone_tree.extract_path = AsyncMock(
+        return_value=[("decision", "choice")]
+    )
+
+    results = await discovery_agent.explore_phone_tree("1234567890")
+
+    assert len(results) == 1
+    assert results[("root", "option1")]["transcription"] == "Test transcription"
+    assert discovery_agent.explore_path.call_count == 1
+    assert discovery_agent.phone_tree.add_path.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_explore_path(discovery_agent):
+    discovery_agent.generate_prompt = AsyncMock(return_value="Test prompt")
+    discovery_agent.call_manager.make_call.return_value = AsyncMock(
+        status="completed", transcription="Test transcription"
+    )
+
+    result = await discovery_agent.explore_path("1234567890", ["root", "option1"])
+
+    assert result["path"] == ["root", "option1"]
+    assert result["transcription"] == "Test transcription"
+    discovery_agent.call_manager.make_call.assert_called_once_with(
+        "1234567890", "Test prompt"
+    )
+
+
+@pytest.mark.asyncio
+async def test_generate_prompt(discovery_agent):
+    discovery_agent.output_generator.generate_mermaid_graph = AsyncMock(
+        return_value="Test graph"
+    )
+
+    prompt = await discovery_agent.generate_prompt(["root", "option1"])
+
+    assert "You are an AI assistant exploring a business phone tree" in prompt
+    assert "Test graph" in prompt

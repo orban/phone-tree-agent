@@ -4,6 +4,7 @@ from loguru import logger
 from discovery.phone_tree import PhoneTree
 from call_management.call_manager import CallManager
 from discovery.output_generator import OutputGenerator
+from openai import AsyncOpenAI
 
 
 class DiscoveryAgent:
@@ -11,7 +12,7 @@ class DiscoveryAgent:
         self,
         call_manager: CallManager,
         output_generator: OutputGenerator,
-        openai_client,
+        openai_client: AsyncOpenAI,
     ) -> None:
         self.call_manager: CallManager = call_manager
         self.output_generator: OutputGenerator = output_generator
@@ -20,40 +21,76 @@ class DiscoveryAgent:
     async def explore_phone_tree(
         self, phone_number: str
     ) -> Dict[Tuple[str, ...], Dict[str, Any]]:
-        results = {}
-        paths_to_explore = await self.phone_tree.get_unexplored_paths()
-        while paths_to_explore:
-            for path in paths_to_explore:
-                result = await self.explore_path(phone_number, path)
-                results[tuple(path)] = result
-                extracted_path = await self.phone_tree.extract_path(
-                    result["transcription"]
-                )
-                await self.phone_tree.add_path(extracted_path)
-            paths_to_explore = await self.phone_tree.get_unexplored_paths()
+        results: Dict[Tuple[str, ...], Dict[str, Any]] = {}
+        max_retries = 3
+        retry_delay = 5  # seconds
+
+        for attempt in range(max_retries):
+            try:
+                paths_to_explore: List[
+                    List[str]
+                ] = await self.phone_tree.get_unexplored_paths()
+                while paths_to_explore:
+                    for path in paths_to_explore:
+                        result: Dict[str, Any] = await self.explore_path(
+                            phone_number, path
+                        )
+                        results[tuple(path)] = result
+                        extracted_path: List[
+                            Tuple[str, str]
+                        ] = await self.phone_tree.extract_path(result["transcription"])
+                        validated_path = await self.phone_tree.validate_path(
+                            extracted_path
+                        )
+                        await self.phone_tree.add_path(validated_path)
+                    paths_to_explore = await self.phone_tree.get_unexplored_paths()
+
+                if await self.phone_tree.validate_tree():
+                    break
+            except Exception as e:
+                logger.error(f"Error during exploration: {str(e)}")
+                if attempt < max_retries - 1:
+                    logger.info(f"Retrying in {retry_delay} seconds...")
+                    await asyncio.sleep(retry_delay)
+                else:
+                    logger.error("Max retries reached. Exploration failed.")
+                    raise
+
         return results
 
-    async def explore_path(
-        self, phone_number: str, current_path: List[str] = []
-    ) -> Dict[str, Any]:
-        prompt = await self.generate_prompt(current_path)
-        call_result = await self.call_manager.make_call(phone_number, prompt)
+    async def explore_path(self, phone_number: str, current_path: List[str] = []):
+        max_retries = 3
+        retry_delay = 5  # seconds
 
-        if call_result.status != "completed":
-            return {
-                "path": current_path,
-                "error": call_result.message,
-                "id": call_result.id,
-                "status": call_result.status,
-            }
+        for attempt in range(max_retries):
+            try:
+                prompt: str = await self.generate_prompt(current_path)
+                call_result = await self.call_manager.make_call(phone_number, prompt)
 
-        return {
-            "path": current_path,
-            "transcription": call_result.transcription,
-        }
+                if call_result.status != "completed":
+                    logger.warning(f"Call not completed: {call_result.status}")
+                    return {
+                        "path": current_path,
+                        "error": call_result.message,
+                        "id": call_result.id,
+                        "status": call_result.status,
+                    }
+
+                return {
+                    "path": current_path,
+                    "transcription": call_result.transcription,
+                }
+            except Exception as e:
+                logger.error(f"Error during path exploration: {str(e)}")
+                if attempt < max_retries - 1:
+                    logger.info(f"Retrying in {retry_delay} seconds...")
+                    await asyncio.sleep(retry_delay)
+                else:
+                    logger.error("Max retries reached. Path exploration failed.")
+                    raise
 
     async def generate_prompt(self, current_path: List[str]) -> str:
-        base_instructions = (
+        base_instructions: str = (
             "You are an AI assistant exploring a business phone tree. "
             "Your goal is to map out the entire tree structure by navigating through all possible options. "
             "Keep responses brief and to the point. Do not offer additional information or services. "
@@ -77,8 +114,8 @@ class DiscoveryAgent:
             )
 
         else:
-            path_str = " -> ".join(current_path)
-            tree_graph = await self.output_generator.generate_mermaid_graph(
+            path_str: str = " -> ".join(current_path)
+            tree_graph: str = await self.output_generator.generate_mermaid_graph(
                 self.phone_tree
             )
             return (
@@ -113,3 +150,9 @@ class DiscoveryAgent:
             return results
 
         return dfs(self.phone_tree.root, [])
+
+    async def simplify_tree(self):
+        """
+        Simplify the phone tree by merging similar nodes and removing redundancies.
+        """
+        await self.phone_tree.simplify_tree()

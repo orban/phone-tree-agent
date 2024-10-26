@@ -35,6 +35,8 @@ async def main():
         results = await discovery_agent.explore_phone_tree(
             config.AGENT_PHONE_NUMBER,
         )
+        
+        await discovery_agent.phone_tree.simplify_tree()
 
         if results:
             logger.info(f"Exploration results: {results}")
